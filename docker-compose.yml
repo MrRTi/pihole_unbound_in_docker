@@ -62,7 +62,7 @@ services:
     restart: always
 
   telegraf:
-    image: telegraf:latest
+    image: telegraf:${TELEGRAF_VERSION:-latest}
     container_name: telegraf
     command: --config /etc/telegraf/telegraf.conf --config-directory /etc/telegraf/telegraf.d
     environment:
@@ -76,7 +76,7 @@ services:
     restart: always
 
   influxdb:
-    image: influxdb:1.8
+    image: influxdb:${INFLUXDB_VERSION:-latest}
     container_name: influxdb
     networks:
       influxdb:
@@ -85,7 +85,7 @@ services:
     restart: always
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:${GRAFANA_VERSION:-latest}
     container_name: grafana
     depends_on:
       - influxdb
