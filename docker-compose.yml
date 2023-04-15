@@ -4,13 +4,13 @@ version: "3.7"
 services:
   pihole:
     build:
-      context: .
+      context: ./pihole
       args:
         - PIHOLE_VERSION
     image: pihole_unbound
     container_name: pihole_unbound
-    hostname: ${HOSTNAME}
-    domainname: ${DOMAIN_NAME}
+    hostname: ${PIHOLE_HOSTNAME}
+    domainname: ${PIHOLE_DOMAIN_NAME}
     cpus: 0.5
     mem_limit: 512M
     # For DHCP it is recommended to remove these ports and instead add: network_mode: "host"
@@ -20,7 +20,7 @@ services:
       - 53:53/udp
       - ${PIHOLE_WEBPORT:-80}:80/tcp
     environment:
-      WEBPASSWORD: ${WEBPASSWORD}
+      WEBPASSWORD: ${PASSWORD}
       TZ: ${TZ}
       # PROXY_LOCATION: pihole
       PIHOLE_DNS_: 127.0.0.1#5335
@@ -34,12 +34,75 @@ services:
       # REV_SERVER_CIDR: ${REV_SERVER_CIDR}
     # Volumes store your data between container upgrades
     volumes:
-      - ./etc/pihole:/etc/pihole
-      # - ./etc/dnsmasq.d/:/etc/dnsmasq.d
-      - ./etc/dnsmasq.d/99-edns.conf:/etc/dnsmasq.d/99-edns.conf
-      - ./etc/unbound/unbound.conf.d/pi-hole.conf:/etc/unbound/unbound.conf.d/pi-hole.conf
-      - ./log/:/var/log/
+      - ./pihole/etc/pihole:/etc/pihole
+      # - ./pihole/etc/dnsmasq.d/:/etc/dnsmasq.d
+      - ./pihole/etc/dnsmasq.d/99-edns.conf:/etc/dnsmasq.d/99-edns.conf
+      - ./pihole/etc/unbound/unbound.conf.d/pi-hole.conf:/etc/unbound/unbound.conf.d/pi-hole.conf
+      - ./pihole/log/:/var/log/
     #   https://github.com/pi-hole/docker-pi-hole#note-on-capabilities
     # cap_add:
     #   - NET_ADMIN # Required if you are using Pi-hole as your DHCP server, else not needed
     restart: unless-stopped
+
+  sql_influx:
+    container_name: sql_influx
+    build: ./sql_influx
+    command: python main.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PIHOLE_FTL_DB=/etc/pihole/pihole-FTL.db
+      - INFLUXDB_HOST=influxdb
+      - INFLUXDB_PORT=8086
+    depends_on:
+      - influxdb
+    networks:
+      - influxdb
+    volumes:
+      - ./pihole/etc/pihole/:/etc/pihole
+    restart: unless-stopped
+
+  telegraf:
+    image: telegraf:latest
+    container_name: telegraf
+    command: --config /etc/telegraf/telegraf.conf --config-directory /etc/telegraf/telegraf.d
+    environment:
+      - PIHOLE_API_URL=${PIHOLE_URL}/admin/api.php?status&auth=${PASSWORD_HASH}
+    depends_on:
+      - influxdb
+    networks:
+      - influxdb
+    volumes:
+      - ./telegraf:/etc/telegraf
+    restart: always
+
+  influxdb:
+    image: influxdb:1.8
+    container_name: influxdb
+    networks:
+      influxdb:
+    volumes:
+      - influxdb-storage:/var/lib/influxdb
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    depends_on:
+      - influxdb
+    ports:
+      - 3000:3000
+    networks:
+      - influxdb
+    environment:
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+    volumes:
+      - grafana-storage:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    restart: unless-stopped
+
+volumes:
+  grafana-storage:
+  influxdb-storage:
+
+networks:
+  influxdb:
