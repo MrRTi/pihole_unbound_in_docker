@@ -73,6 +73,7 @@ services:
       - influxdb
     volumes:
       - ./telegraf:/etc/telegraf
+      - /sys/class/thermal/thermal_zone0:/sys/class/thermal/thermal_zone0
     restart: always
 
   influxdb:
